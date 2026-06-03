@@ -1,0 +1,13 @@
+# Files not uploaded to Cloud Build.
+.git
+.gitignore
+node_modules
+**/node_modules
+**/dist
+.env
+.env.*
+.tools
+.data
+.claude
+docs
+*.md

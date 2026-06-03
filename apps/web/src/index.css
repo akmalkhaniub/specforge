@@ -1,0 +1,51 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Design tokens as "R G B" triplets. :root is the light theme (default);
+   .dark overrides for dark mode. Toggled by ThemeProvider on <html>. */
+:root {
+  --c-background: 247 248 250; /* #f7f8fa */
+  --c-surface: 255 255 255; /* #ffffff */
+  --c-surface-2: 241 243 247; /* #f1f3f7 */
+  --c-border: 226 232 240; /* #e2e8f0 */
+  --c-text: 26 32 44; /* #1a202c */
+  --c-muted: 100 116 139; /* #64748b */
+  --c-accent: 90 103 216; /* #5a67d8 */
+  --c-accent-fg: 255 255 255; /* white text on accent */
+  --c-success: 56 161 105; /* #38a169 */
+  --c-warning: 183 121 31; /* #b7791f */
+  --c-danger: 229 62 62; /* #e53e3e */
+  color-scheme: light;
+}
+
+.dark {
+  --c-background: 15 17 23; /* #0f1117 */
+  --c-surface: 26 31 46; /* #1a1f2e */
+  --c-surface-2: 33 39 56; /* #212738 */
+  --c-border: 45 55 72; /* #2d3748 */
+  --c-text: 226 232 240; /* #e2e8f0 */
+  --c-muted: 113 128 150; /* #718096 */
+  --c-accent: 102 126 234; /* #667eea */
+  --c-accent-fg: 255 255 255;
+  --c-success: 104 211 145; /* #68d391 */
+  --c-warning: 246 224 94; /* #f6e05e */
+  --c-danger: 252 129 129; /* #fc8181 */
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  background-color: rgb(var(--c-background));
+  color: rgb(var(--c-text));
+}
+
+/* Smooth theme transitions on surfaces/borders/text. */
