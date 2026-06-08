@@ -2,22 +2,115 @@
  * Project page: header stats, semantic search, and an accordion of epics with
  * their user stories.
  */
-import type { Epic, Story } from '@specforge/shared';
-import { ChevronDown, ChevronRight, Search } from 'lucide-react';
+import type { Epic, Priority, Story } from '@specforge/shared';
+import { ChevronDown, ChevronRight, Download, FileText, Pencil, RefreshCw, Search } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { useProject, useSearch } from '../lib/hooks';
+import { API_BASE, documentDownloadUrl } from '../lib/api';
+import {
+  useProject,
+  useProjectDocuments,
+  useReprocessDocument,
+  useSearch,
+  useUpdateStory,
+} from '../lib/hooks';
 import { Card, Chip, ConfidenceBar, PriorityBadge, Skeleton } from '../components/ui';
 
-function StoryCard({ story }: { story: Story }): JSX.Element {
+function ExportMenu({ projectId }: { projectId: string }): JSX.Element {
+  const link = (fmt: string): string => `${API_BASE}/api/projects/${projectId}/export?format=${fmt}`;
+  const formats: Array<{ fmt: string; label: string }> = [
+    { fmt: 'md', label: 'Markdown' },
+    { fmt: 'csv', label: 'CSV' },
+    { fmt: 'jira', label: 'Jira CSV' },
+  ];
   return (
-    <div className="bg-background border border-border rounded-md p-3">
+    <div className="flex items-center gap-2">
+      <span className="text-xs text-muted flex items-center gap-1">
+        <Download size={14} /> Export
+      </span>
+      {formats.map(({ fmt, label }) => (
+        <a
+          key={fmt}
+          href={link(fmt)}
+          className="text-xs px-2 py-1 rounded border border-border bg-surface hover:border-accent/50 hover:text-accent"
+        >
+          {label}
+        </a>
+      ))}
+    </div>
+  );
+}
+
+function StoryCard({ story, projectId }: { story: Story; projectId: string }): JSX.Element {
+  const [editing, setEditing] = useState(false);
+  const [title, setTitle] = useState(story.title);
+  const [description, setDescription] = useState(story.description);
+  const [priority, setPriority] = useState<Priority>(story.priority);
+  const update = useUpdateStory(projectId);
+
+  const save = (): void => {
+    update.mutate(
+      { id: story.id, patch: { title, description, priority } },
+      { onSuccess: () => setEditing(false) },
+    );
+  };
+
+  if (editing) {
+    return (
+      <div className="bg-background border border-accent/40 rounded-md p-3 space-y-2">
+        <input
+          className="w-full bg-surface border border-border rounded px-2 py-1 text-sm"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+        />
+        <textarea
+          className="w-full bg-surface border border-border rounded px-2 py-1 text-xs"
+          rows={2}
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+        />
+        <div className="flex items-center justify-between">
+          <select
+            className="bg-surface border border-border rounded px-2 py-1 text-xs"
+            value={priority}
+            onChange={(e) => setPriority(e.target.value as Priority)}
+          >
+            <option value="high">high</option>
+            <option value="medium">medium</option>
+            <option value="low">low</option>
+          </select>
+          <div className="flex gap-2">
+            <button className="text-xs px-2 py-1 rounded border border-border" onClick={() => setEditing(false)}>
+              Cancel
+            </button>
+            <button
+              className="text-xs px-2 py-1 rounded bg-accent text-accent-fg disabled:opacity-50"
+              disabled={update.isPending || !title.trim()}
+              onClick={save}
+            >
+              {update.isPending ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-background border border-border rounded-md p-3 group">
       <div className="flex items-center justify-between">
         <div className="text-sm font-medium">{story.title}</div>
         <div className="flex items-center gap-2">
           {story.persona ? <Chip>{story.persona}</Chip> : null}
           {story.storyPoints !== null ? <Chip>{story.storyPoints} pts</Chip> : null}
           <PriorityBadge priority={story.priority} />
+          <button
+            className="text-muted hover:text-accent opacity-0 group-hover:opacity-100 transition-opacity"
+            title="Edit story"
+            onClick={() => setEditing(true)}
+          >
+            <Pencil size={13} />
+          </button>
         </div>
       </div>
       <div className="text-xs text-muted mt-1">{story.description}</div>
@@ -35,7 +128,58 @@ function StoryCard({ story }: { story: Story }): JSX.Element {
   );
 }
 
-function EpicCard({ epic, highlighted }: { epic: Epic; highlighted: boolean }): JSX.Element {
+function DocumentsSection({ projectId }: { projectId: string }): JSX.Element | null {
+  const docs = useProjectDocuments(projectId);
+  const reprocess = useReprocessDocument(projectId);
+  if (!docs.data || docs.data.length === 0) return null;
+
+  const statusColour: Record<string, string> = {
+    extracted: 'text-success',
+    failed: 'text-danger',
+    processing: 'text-warning',
+    pending: 'text-muted',
+  };
+
+  return (
+    <Card>
+      <div className="text-sm font-medium mb-3">Documents</div>
+      <div className="space-y-2">
+        {docs.data.map((d) => (
+          <div key={d.id} className="flex items-center justify-between text-sm">
+            <div className="flex items-center gap-2 min-w-0">
+              <FileText size={15} className="text-muted shrink-0" />
+              <span className="truncate">{d.filename}</span>
+              <span className={`text-xs ${statusColour[d.status] ?? 'text-muted'}`}>· {d.status}</span>
+            </div>
+            <div className="flex items-center gap-3 shrink-0">
+              <a href={documentDownloadUrl(d.id)} className="text-xs text-accent hover:underline">
+                Download
+              </a>
+              <button
+                className="text-xs flex items-center gap-1 text-muted hover:text-accent disabled:opacity-50"
+                disabled={reprocess.isPending}
+                onClick={() => reprocess.mutate(d.id)}
+                title="Re-run extraction"
+              >
+                <RefreshCw size={12} /> Re-extract
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function EpicCard({
+  epic,
+  highlighted,
+  projectId,
+}: {
+  epic: Epic;
+  highlighted: boolean;
+  projectId: string;
+}): JSX.Element {
   const [open, setOpen] = useState(false);
   const stories = epic.stories ?? [];
   return (
@@ -55,7 +199,7 @@ function EpicCard({ epic, highlighted }: { epic: Epic; highlighted: boolean }): 
         <div className="mt-3 space-y-3">
           <p className="text-sm text-muted">{epic.description}</p>
           {stories.map((s) => (
-            <StoryCard key={s.id} story={s} />
+            <StoryCard key={s.id} story={s} projectId={projectId} />
           ))}
         </div>
       ) : null}
@@ -91,14 +235,17 @@ export function Project(): JSX.Element {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h2 className="text-xl font-semibold">{name}</h2>
-        {description ? <p className="text-muted text-sm mt-1">{description}</p> : null}
-        <div className="flex gap-2 mt-2">
-          <Chip>{epics.length} epics</Chip>
-          <Chip>{storyCount} stories</Chip>
-          <Chip>{project.data.documentCount} docs</Chip>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-semibold">{name}</h2>
+          {description ? <p className="text-muted text-sm mt-1">{description}</p> : null}
+          <div className="flex gap-2 mt-2">
+            <Chip>{epics.length} epics</Chip>
+            <Chip>{storyCount} stories</Chip>
+            <Chip>{project.data.documentCount} docs</Chip>
+          </div>
         </div>
+        {epics.length > 0 && id ? <ExportMenu projectId={id} /> : null}
       </div>
 
       <div className="relative max-w-md">
@@ -123,10 +270,17 @@ export function Project(): JSX.Element {
       ) : (
         <div className="space-y-3">
           {epics.map((epic) => (
-            <EpicCard key={epic.id} epic={epic} highlighted={highlightedIds.has(epic.id)} />
+            <EpicCard
+              key={epic.id}
+              epic={epic}
+              highlighted={highlightedIds.has(epic.id)}
+              projectId={id ?? ''}
+            />
           ))}
         </div>
       )}
+
+      {id ? <DocumentsSection projectId={id} /> : null}
     </div>
   );
 }

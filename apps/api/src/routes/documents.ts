@@ -5,6 +5,8 @@
  */
 import type { Document } from '@specforge/shared';
 import { Hono } from 'hono';
+import { zValidator } from '@hono/zod-validator';
+import { z } from 'zod';
 import { sql } from '../db/client.js';
 import { addExtractionJob } from '../queue/extraction-queue.js';
 import { storage } from '../storage/minio.js';
@@ -78,4 +80,53 @@ documents.post('/upload', async (c) => {
 
   log.info('document_uploaded', { documentId: doc.id, jobId, projectId, size });
   return c.json({ documentId: doc.id, jobId, message: 'Extraction queued' }, 202);
+});
+
+// GET /api/documents?projectId=  — list a project's documents (newest first)
+documents.get(
+  '/',
+  zValidator('query', z.object({ projectId: z.string().uuid() })),
+  async (c) => {
+    const { projectId } = c.req.valid('query');
+    const rows = await sql<Document[]>`
+      SELECT id, project_id, filename, mime_type, minio_key, size_bytes, status, created_at
+      FROM documents
+      WHERE project_id = ${projectId} AND deleted_at IS NULL
+      ORDER BY created_at DESC
+    `;
+    return c.json(rows);
+  },
+);
+
+// GET /api/documents/:id/download  — redirect to a presigned MinIO URL
+documents.get('/:id/download', async (c) => {
+  const id = c.req.param('id');
+  const [doc] = await sql<{ minioKey: string }[]>`
+    SELECT minio_key FROM documents WHERE id = ${id} AND deleted_at IS NULL
+  `;
+  if (!doc) throw new NotFoundError('Document not found', { documentId: id });
+  const url = await storage.getPresignedUrl(doc.minioKey, 300);
+  return c.redirect(url);
+});
+
+// POST /api/documents/:id/reprocess  — re-run extraction for an existing document
+documents.post('/:id/reprocess', async (c) => {
+  const id = c.req.param('id');
+  const [doc] = await sql<{ id: string; projectId: string; filename: string; orgId: string }[]>`
+    SELECT d.id, d.project_id, d.filename, p.org_id
+    FROM documents d JOIN projects p ON d.project_id = p.id
+    WHERE d.id = ${id} AND d.deleted_at IS NULL
+  `;
+  if (!doc) throw new NotFoundError('Document not found', { documentId: id });
+
+  await sql`UPDATE documents SET status = 'pending' WHERE id = ${id}`;
+  const jobId = await addExtractionJob({
+    documentId: doc.id,
+    projectId: doc.projectId,
+    orgId: doc.orgId,
+    filename: doc.filename,
+  });
+  await sql`INSERT INTO extraction_jobs (id, document_id, status) VALUES (${jobId}::uuid, ${doc.id}, 'queued')`;
+  log.info('document_reprocess', { documentId: id, jobId });
+  return c.json({ documentId: id, jobId, message: 'Re-extraction queued' }, 202);
 });

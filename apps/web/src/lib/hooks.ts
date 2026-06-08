@@ -44,6 +44,35 @@ export function useCreateProject() {
   });
 }
 
+export function useUpdateStory(projectId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: Parameters<typeof api.updateStory>[1] }) =>
+      api.updateStory(id, patch),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['project', projectId] });
+    },
+  });
+}
+
+export function useProjectDocuments(projectId: string | undefined) {
+  return useQuery({
+    queryKey: ['documents', projectId],
+    queryFn: () => api.getProjectDocuments(projectId as string),
+    enabled: Boolean(projectId),
+  });
+}
+
+export function useReprocessDocument(projectId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (documentId: string) => api.reprocessDocument(documentId),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['documents', projectId] });
+    },
+  });
+}
+
 export function useAnalyticsOverview(orgId: string | undefined) {
   return useQuery({
     queryKey: ['analytics', 'overview', orgId],

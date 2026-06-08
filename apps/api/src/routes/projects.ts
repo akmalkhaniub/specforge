@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { env } from '../config/env.js';
 import { sql } from '../db/client.js';
 import { generateEmbedding } from '../ai/embeddings.js';
+import { exportProject, type ExportFormat } from '../lib/exporters.js';
 import { NotFoundError } from '../lib/errors.js';
 import { log } from '../lib/logger.js';
 
@@ -66,16 +67,15 @@ projects.post(
   },
 );
 
-// GET /api/projects/:id  — project with epics (each with stories)
-projects.get('/:id', async (c) => {
-  const id = c.req.param('id');
+/** Loads a project with its epics (each hydrated with stories), or null. */
+async function loadProjectWithEpics(id: string): Promise<{ project: Project; epics: Epic[] } | null> {
   const [project] = await sql<Project[]>`
     SELECT id, org_id, name, description, status, document_count, epic_count,
            created_at, updated_at
     FROM projects
     WHERE id = ${id} AND deleted_at IS NULL
   `;
-  if (!project) throw new NotFoundError('Project not found', { projectId: id });
+  if (!project) return null;
 
   const epicRows = await sql<Epic[]>`
     SELECT id, project_id, document_id, title, description, priority,
@@ -104,8 +104,33 @@ projects.get('/:id', async (c) => {
   }
 
   const epics: Epic[] = epicRows.map((e) => ({ ...e, stories: storiesByEpic.get(e.id) ?? [] }));
-  return c.json({ ...project, epics });
+  return { project, epics };
+}
+
+// GET /api/projects/:id  — project with epics (each with stories)
+projects.get('/:id', async (c) => {
+  const id = c.req.param('id');
+  const data = await loadProjectWithEpics(id);
+  if (!data) throw new NotFoundError('Project not found', { projectId: id });
+  return c.json({ ...data.project, epics: data.epics });
 });
+
+// GET /api/projects/:id/export?format=md|csv|jira  — download requirements
+projects.get(
+  '/:id/export',
+  zValidator('query', z.object({ format: z.enum(['md', 'csv', 'jira']).default('md') })),
+  async (c) => {
+    const id = c.req.param('id');
+    const { format } = c.req.valid('query');
+    const data = await loadProjectWithEpics(id);
+    if (!data) throw new NotFoundError('Project not found', { projectId: id });
+
+    const { body, contentType, filename } = exportProject(data.project, data.epics, format as ExportFormat);
+    c.header('Content-Type', contentType);
+    c.header('Content-Disposition', `attachment; filename="${filename}"`);
+    return c.body(body);
+  },
+);
 
 // GET /api/projects/:id/search?q=
 projects.get(

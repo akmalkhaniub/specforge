@@ -24,6 +24,7 @@ import { epics } from './routes/epics.js';
 import { jobs } from './routes/jobs.js';
 import { org } from './routes/org.js';
 import { projects } from './routes/projects.js';
+import { stories } from './routes/stories.js';
 
 const startedAt = Date.now();
 const app = new Hono();
@@ -83,6 +84,7 @@ app.route('/api/projects', projects);
 app.route('/api/documents', documents);
 app.route('/api/jobs', jobs);
 app.route('/api/epics', epics);
+app.route('/api/stories', stories);
 app.route('/api/chat', chat);
 app.route('/api/analytics', analytics);
 

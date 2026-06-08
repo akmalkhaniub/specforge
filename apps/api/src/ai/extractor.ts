@@ -89,10 +89,10 @@ async function callTool<T>(args: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- JSON Schema literal
   inputSchema: any;
   parse: (input: unknown) => { success: true; data: T } | { success: false; error: string };
-  userMessage: string;
+  userContent: Anthropic.ContentBlockParam[];
   pass: number;
 }): Promise<{ data: T; usage: Usage; retried: boolean }> {
-  const { client, toolName, inputSchema, parse, userMessage, pass } = args;
+  const { client, toolName, inputSchema, parse, userContent, pass } = args;
 
   const system: Anthropic.TextBlockParam[] = [
     {
@@ -112,7 +112,7 @@ async function callTool<T>(args: {
     system,
     tools,
     tool_choice: { type: 'tool', name: toolName },
-    messages: [{ role: 'user', content: userMessage }],
+    messages: [{ role: 'user', content: userContent }],
   });
   const firstUsage = readUsage(first);
   log.info('claude_call', {
@@ -142,7 +142,7 @@ async function callTool<T>(args: {
     tools,
     tool_choice: { type: 'tool', name: toolName },
     messages: [
-      { role: 'user', content: userMessage },
+      { role: 'user', content: userContent },
       {
         role: 'user',
         content: `Your previous response failed schema validation:\n${firstParsed.error}\nReturn corrected data via the ${toolName} tool.`,
@@ -191,6 +191,17 @@ export async function extractRequirements(params: ExtractParams): Promise<Extrac
   const { documentText, documentId, onProgress } = params;
   const client = getAnthropic();
 
+  // The document is the bulk of every call's input and is identical across all
+  // calls, so mark it as a cache breakpoint. Pass 1 writes the cache; pass 2
+  // (one call per epic) reads it, cutting input cost ~10x on the cached portion.
+  // Caching only applies above the model's minimum cacheable prefix (~1024
+  // tokens), so it kicks in for real documents, not tiny samples.
+  const docBlock: Anthropic.TextBlockParam = {
+    type: 'text',
+    text: `Document:\n\n${documentText}`,
+    cache_control: { type: 'ephemeral' },
+  };
+
   const totals: Usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
   let validationRetries = 0;
   const accumulate = (u: Usage): void => {
@@ -211,7 +222,7 @@ export async function extractRequirements(params: ExtractParams): Promise<Extrac
       const r = ExtractionResultSchema.safeParse(input);
       return r.success ? { success: true, data: r.data } : { success: false, error: r.error.toString() };
     },
-    userMessage: `Extract all epics from this document:\n\n${documentText}`,
+    userContent: [docBlock, { type: 'text', text: 'Extract all epics from the document above.' }],
     pass: 1,
   });
   accumulate(pass1.usage);
@@ -232,7 +243,13 @@ export async function extractRequirements(params: ExtractParams): Promise<Extrac
         const r = StoriesResultSchema.safeParse(input);
         return r.success ? { success: true, data: r.data } : { success: false, error: r.error.toString() };
       },
-      userMessage: `Extract user stories for this epic:\nEpic: ${epic.title}\n${epic.description}\n\nFrom document:\n${documentText}`,
+      userContent: [
+        docBlock,
+        {
+          type: 'text',
+          text: `Extract user stories for this epic from the document above:\nEpic: ${epic.title}\n${epic.description}`,
+        },
+      ],
       pass: 2,
     });
     accumulate(result.usage);

@@ -5,6 +5,7 @@
 import type {
   AnalyticsOverview,
   CostEstimate,
+  Document,
   Epic,
   ExtractionAnalyticsRow,
   ExtractionJob,
@@ -87,6 +88,29 @@ export async function uploadDocument(file: File, projectId: string): Promise<Upl
   form.append('projectId', projectId);
   const { data } = await http.post<UploadResponse>('/api/documents/upload', form);
   return data;
+}
+
+export async function updateStory(
+  id: string,
+  patch: { title?: string; description?: string; persona?: string; priority?: Priority },
+): Promise<Story> {
+  const { data } = await http.patch<Story>(`/api/stories/${id}`, patch);
+  return data;
+}
+
+export async function getProjectDocuments(projectId: string): Promise<Document[]> {
+  const { data } = await http.get<Document[]>('/api/documents', { params: { projectId } });
+  return data;
+}
+
+export async function reprocessDocument(id: string): Promise<{ jobId: string }> {
+  const { data } = await http.post<{ jobId: string }>(`/api/documents/${id}/reprocess`);
+  return data;
+}
+
+/** Direct download URL for a document (server redirects to a presigned URL). */
+export function documentDownloadUrl(id: string): string {
+  return `${API_BASE}/api/documents/${id}/download`;
 }
 
 export async function getJob(jobId: string): Promise<ExtractionJob> {

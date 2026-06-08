@@ -3,6 +3,24 @@
 All notable changes to SpecForge are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); the project is pre-1.0.
 
+## [Unreleased]
+
+### Added
+- **Export**: download a project's epics/stories as Markdown, generic CSV, or
+  Jira-import CSV (`GET /api/projects/:id/export?format=md|csv|jira`) + export
+  buttons on the Project page.
+- **Story editing**: `PATCH`/`DELETE /api/stories/:id` + inline edit (title,
+  description, priority) on each story card.
+- **Documents & re-extract**: list a project's documents, presigned download
+  (`GET /api/documents/:id/download`), and re-run extraction
+  (`POST /api/documents/:id/reprocess`) — surfaced in a Documents section on the
+  Project page.
+
+### Changed
+- **Prompt caching**: the document text is now a `cache_control` content block,
+  so pass-2 (per-epic) calls read it from cache instead of re-billing full input
+  price. Verified: ~2.2k tokens/call served from cache on a multi-epic doc.
+
 ## [0.1.0] - 2026-06-04
 
 Initial build — full vertical slice across all phases.
