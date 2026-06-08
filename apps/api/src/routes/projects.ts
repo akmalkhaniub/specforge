@@ -15,7 +15,11 @@ import { log } from '../lib/logger.js';
 
 export const projects = new Hono();
 
-const SIMILARITY_THRESHOLD = 0.7;
+// Empirically tuned for text-embedding-3-small: cosine similarity between a
+// short query and short epic text rarely exceeds ~0.5, so the spec's original
+// 0.7 cutoff returned nothing in practice. 0.3 keeps relevant hits while still
+// filtering noise. (Verified via smoke-e2e: checkout=0.46, confirmation=0.41.)
+const SIMILARITY_THRESHOLD = 0.3;
 const SEARCH_LIMIT = 10;
 
 /** Orders priorities high → medium → low in SQL. */

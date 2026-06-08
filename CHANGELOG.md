@@ -30,6 +30,15 @@ Initial build — full vertical slice across all phases.
 - **Docs**: README, DECISIONS (5 ADRs), RUNBOOK, POST_MORTEM_TEMPLATE, progress
   tracker.
 
+### Fixed (post-build, from live testing)
+- **Model version**: pinned `CLAUDE_MODEL` corrected to `claude-sonnet-4-5-20250929`
+  (the spec's `...20251022` does not exist and returned 404). Verified live:
+  two-pass extraction produces ~5 epics / ~12 stories per sample doc.
+- **Semantic search threshold**: lowered from `0.7` to `0.3`. With
+  `text-embedding-3-small`, short query↔epic cosine similarity tops out ~0.5–0.6,
+  so the 0.7 cutoff returned nothing; 0.3 surfaces relevant hits while filtering
+  noise. Verified end-to-end (`smoke-e2e.ts`).
+
 ### Notes
 - `@anthropic-ai/sdk` pinned to `0.100.1` (prompt-caching token fields are stable
   there; the spec's original `0.32.1` exposed them only under `beta`).
