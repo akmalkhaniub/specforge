@@ -107,7 +107,9 @@ pnpm --filter api dev         # http://localhost:3000
 pnpm --filter web dev         # http://localhost:5173
 ```
 
-Open http://localhost:5173.
+Open http://localhost:5173 and sign in with the seeded demo account:
+**`demo@acme.test`** / **`demo1234`**. All data is scoped to the signed-in user's
+organisation (JWT auth; set a strong `JWT_SECRET` in production).
 
 To enable semantic search, set `OPENAI_API_KEY` and `EMBEDDINGS_ENABLED=true` in
 `.env`, then re-run extractions so embeddings are generated.

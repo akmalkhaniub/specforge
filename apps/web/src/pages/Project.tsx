@@ -6,7 +6,7 @@ import type { Epic, Priority, Story } from '@specforge/shared';
 import { ChevronDown, ChevronRight, Download, FileText, Pencil, RefreshCw, Search, Sparkles } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { API_BASE, documentDownloadUrl } from '../lib/api';
+import { API_BASE, authHeaders, documentDownloadUrl, projectExportUrl } from '../lib/api';
 import { readSSE } from '../lib/sse';
 import {
   useProject,
@@ -18,7 +18,7 @@ import {
 import { Card, Chip, ConfidenceBar, PriorityBadge, Skeleton } from '../components/ui';
 
 function ExportMenu({ projectId }: { projectId: string }): JSX.Element {
-  const link = (fmt: string): string => `${API_BASE}/api/projects/${projectId}/export?format=${fmt}`;
+  const link = (fmt: string): string => projectExportUrl(projectId, fmt);
   const formats: Array<{ fmt: string; label: string }> = [
     { fmt: 'md', label: 'Markdown' },
     { fmt: 'csv', label: 'CSV' },
@@ -152,7 +152,7 @@ function AskPanel({ projectId }: { projectId: string }): JSX.Element {
     try {
       const res = await fetch(`${API_BASE}/api/projects/${projectId}/ask`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ question: q }),
       });
       if (!res.body) throw new Error('No response stream');

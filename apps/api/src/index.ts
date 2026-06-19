@@ -17,7 +17,9 @@ import { log } from './lib/logger.js';
 import { queueConnection } from './queue/connection.js';
 import { startWorker } from './queue/worker.js';
 import { storage } from './storage/minio.js';
+import { authMiddleware } from './middleware/auth.js';
 import { analytics } from './routes/analytics.js';
+import { auth } from './routes/auth.js';
 import { chat } from './routes/chat.js';
 import { documents } from './routes/documents.js';
 import { epics } from './routes/epics.js';
@@ -78,7 +80,14 @@ app.get('/health', async (c) => {
 
 app.get('/', (c) => c.json({ name: 'specforge-api', version: '0.1.0' }));
 
-// --- Routes ---
+// --- Auth: login is public; everything else under /api requires a token ---
+app.use('/api/*', async (c, next) => {
+  if (c.req.path === '/api/auth/login') return next();
+  return authMiddleware(c, next);
+});
+app.route('/api/auth', auth);
+
+// --- Routes (all tenant-scoped via the authenticated org) ---
 app.route('/api/org', org);
 app.route('/api/projects', projects);
 app.route('/api/documents', documents);

@@ -5,6 +5,7 @@ import {
   BarChart3,
   FileStack,
   LayoutDashboard,
+  LogOut,
   MessagesSquare,
   Moon,
   Sun,
@@ -12,7 +13,7 @@ import {
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { useOrg } from '../lib/org';
+import { useAuth } from '../lib/auth';
 import { useTheme } from '../lib/theme';
 
 const NAV = [
@@ -44,7 +45,7 @@ function ThemeToggle(): JSX.Element {
 }
 
 export function Layout({ children }: { children: ReactNode }): JSX.Element {
-  const { orgName } = useOrg();
+  const { user, logout } = useAuth();
   const { pathname } = useLocation();
   const title = TITLES[pathname] ?? (pathname.startsWith('/projects') ? 'Project' : 'SpecForge');
 
@@ -79,12 +80,20 @@ export function Layout({ children }: { children: ReactNode }): JSX.Element {
         <div className="px-4 py-4 border-t border-border">
           <div className="flex items-center gap-2.5 px-1">
             <div className="h-8 w-8 grid place-items-center rounded-full bg-accent/15 text-accent text-xs font-semibold">
-              {orgName.slice(0, 2).toUpperCase()}
+              {(user?.name ?? 'U').slice(0, 2).toUpperCase()}
             </div>
-            <div className="min-w-0">
-              <div className="text-xs font-medium truncate">{orgName}</div>
-              <div className="text-[11px] text-muted">Workspace</div>
+            <div className="min-w-0 flex-1">
+              <div className="text-xs font-medium truncate">{user?.name ?? 'User'}</div>
+              <div className="text-[11px] text-muted truncate">{user?.email}</div>
             </div>
+            <button
+              onClick={logout}
+              title="Sign out"
+              className="text-muted hover:text-danger"
+              aria-label="Sign out"
+            >
+              <LogOut size={16} />
+            </button>
           </div>
         </div>
       </aside>

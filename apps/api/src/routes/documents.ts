@@ -11,6 +11,7 @@ import { sql } from '../db/client.js';
 import { addExtractionJob } from '../queue/extraction-queue.js';
 import { storage } from '../storage/minio.js';
 import { NotFoundError, ValidationError } from '../lib/errors.js';
+import { getAuth } from '../middleware/auth.js';
 import { log } from '../lib/logger.js';
 
 export const documents = new Hono();
@@ -44,9 +45,10 @@ documents.post('/upload', async (c) => {
     return c.json({ error: err.message, code: 'PAYLOAD_TOO_LARGE' }, 413);
   }
 
-  // Resolve the owning org from the project (jobs are tenant-scoped).
-  const [project] = await sql<{ orgId: string }[]>`
-    SELECT org_id FROM projects WHERE id = ${projectId} AND deleted_at IS NULL
+  // Verify the project belongs to the caller's org (tenant isolation).
+  const { orgId } = getAuth(c);
+  const [project] = await sql<{ id: string }[]>`
+    SELECT id FROM projects WHERE id = ${projectId} AND org_id = ${orgId} AND deleted_at IS NULL
   `;
   if (!project) throw new NotFoundError('Project not found', { projectId });
 
@@ -70,7 +72,7 @@ documents.post('/upload', async (c) => {
   const jobId = await addExtractionJob({
     documentId: doc.id,
     projectId,
-    orgId: project.orgId,
+    orgId,
     filename: file.name,
   });
   await sql`
@@ -88,11 +90,12 @@ documents.get(
   zValidator('query', z.object({ projectId: z.string().uuid() })),
   async (c) => {
     const { projectId } = c.req.valid('query');
+    const { orgId } = getAuth(c);
     const rows = await sql<Document[]>`
-      SELECT id, project_id, filename, mime_type, minio_key, size_bytes, status, created_at
-      FROM documents
-      WHERE project_id = ${projectId} AND deleted_at IS NULL
-      ORDER BY created_at DESC
+      SELECT d.id, d.project_id, d.filename, d.mime_type, d.minio_key, d.size_bytes, d.status, d.created_at
+      FROM documents d JOIN projects p ON d.project_id = p.id
+      WHERE d.project_id = ${projectId} AND p.org_id = ${orgId} AND d.deleted_at IS NULL
+      ORDER BY d.created_at DESC
     `;
     return c.json(rows);
   },
@@ -101,8 +104,10 @@ documents.get(
 // GET /api/documents/:id/download  — redirect to a presigned MinIO URL
 documents.get('/:id/download', async (c) => {
   const id = c.req.param('id');
+  const { orgId } = getAuth(c);
   const [doc] = await sql<{ minioKey: string }[]>`
-    SELECT minio_key FROM documents WHERE id = ${id} AND deleted_at IS NULL
+    SELECT d.minio_key FROM documents d JOIN projects p ON d.project_id = p.id
+    WHERE d.id = ${id} AND p.org_id = ${orgId} AND d.deleted_at IS NULL
   `;
   if (!doc) throw new NotFoundError('Document not found', { documentId: id });
   const url = await storage.getPresignedUrl(doc.minioKey, 300);
@@ -112,10 +117,11 @@ documents.get('/:id/download', async (c) => {
 // POST /api/documents/:id/reprocess  — re-run extraction for an existing document
 documents.post('/:id/reprocess', async (c) => {
   const id = c.req.param('id');
+  const { orgId } = getAuth(c);
   const [doc] = await sql<{ id: string; projectId: string; filename: string; orgId: string }[]>`
     SELECT d.id, d.project_id, d.filename, p.org_id
     FROM documents d JOIN projects p ON d.project_id = p.id
-    WHERE d.id = ${id} AND d.deleted_at IS NULL
+    WHERE d.id = ${id} AND p.org_id = ${orgId} AND d.deleted_at IS NULL
   `;
   if (!doc) throw new NotFoundError('Document not found', { documentId: id });
 

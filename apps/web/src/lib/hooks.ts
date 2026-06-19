@@ -6,16 +6,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import * as api from './api';
 
-export function useDefaultOrg() {
-  return useQuery({ queryKey: ['org', 'default'], queryFn: api.getDefaultOrg, staleTime: Infinity });
-}
-
-export function useProjects(orgId: string | undefined) {
-  return useQuery({
-    queryKey: ['projects', orgId],
-    queryFn: () => api.getProjects(orgId as string),
-    enabled: Boolean(orgId),
-  });
+export function useProjects() {
+  return useQuery({ queryKey: ['projects'], queryFn: api.getProjects });
 }
 
 export function useProject(id: string | undefined) {
@@ -38,8 +30,8 @@ export function useCreateProject() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: api.createProject,
-    onSuccess: (project) => {
-      void qc.invalidateQueries({ queryKey: ['projects', project.orgId] });
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['projects'] });
     },
   });
 }
@@ -73,35 +65,25 @@ export function useReprocessDocument(projectId: string | undefined) {
   });
 }
 
-export function useAnalyticsOverview(orgId: string | undefined) {
+export function useAnalyticsOverview() {
+  return useQuery({ queryKey: ['analytics', 'overview'], queryFn: api.getAnalyticsOverview });
+}
+
+export function useAnalyticsTimeline(days = 30) {
   return useQuery({
-    queryKey: ['analytics', 'overview', orgId],
-    queryFn: () => api.getAnalyticsOverview(orgId as string),
-    enabled: Boolean(orgId),
+    queryKey: ['analytics', 'timeline', days],
+    queryFn: () => api.getAnalyticsTimeline(days),
   });
 }
 
-export function useAnalyticsTimeline(orgId: string | undefined, days = 30) {
-  return useQuery({
-    queryKey: ['analytics', 'timeline', orgId, days],
-    queryFn: () => api.getAnalyticsTimeline(orgId as string, days),
-    enabled: Boolean(orgId),
-  });
+export function useAnalyticsByModel() {
+  return useQuery({ queryKey: ['analytics', 'by_model'], queryFn: api.getAnalyticsByModel });
 }
 
-export function useAnalyticsByModel(orgId: string | undefined) {
+export function useAnalyticsJobs(limit = 20) {
   return useQuery({
-    queryKey: ['analytics', 'by_model', orgId],
-    queryFn: () => api.getAnalyticsByModel(orgId as string),
-    enabled: Boolean(orgId),
-  });
-}
-
-export function useAnalyticsJobs(orgId: string | undefined, limit = 20) {
-  return useQuery({
-    queryKey: ['analytics', 'jobs', orgId, limit],
-    queryFn: () => api.getAnalyticsJobs(orgId as string, limit),
-    enabled: Boolean(orgId),
+    queryKey: ['analytics', 'jobs', limit],
+    queryFn: () => api.getAnalyticsJobs(limit),
   });
 }
 

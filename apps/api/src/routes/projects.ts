@@ -14,6 +14,7 @@ import { generateEmbedding } from '../ai/embeddings.js';
 import { streamAnswer, type RagContext } from '../ai/rag.js';
 import { exportProject, type ExportFormat } from '../lib/exporters.js';
 import { NotFoundError } from '../lib/errors.js';
+import { getAuth } from '../middleware/auth.js';
 import { log } from '../lib/logger.js';
 
 export const projects = new Hono();
@@ -28,36 +29,26 @@ const SEARCH_LIMIT = 10;
 /** Orders priorities high → medium → low in SQL. */
 const PRIORITY_ORDER = sql`CASE priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END`;
 
-// GET /api/projects?orgId=
-projects.get(
-  '/',
-  zValidator('query', z.object({ orgId: z.string().uuid() })),
-  async (c) => {
-    const { orgId } = c.req.valid('query');
-    const rows = await sql<Project[]>`
-      SELECT id, org_id, name, description, status, document_count, epic_count,
-             created_at, updated_at
-      FROM projects
-      WHERE org_id = ${orgId} AND deleted_at IS NULL
-      ORDER BY created_at DESC
-    `;
-    return c.json(rows);
-  },
-);
+// GET /api/projects  — projects in the caller's org
+projects.get('/', async (c) => {
+  const { orgId } = getAuth(c);
+  const rows = await sql<Project[]>`
+    SELECT id, org_id, name, description, status, document_count, epic_count,
+           created_at, updated_at
+    FROM projects
+    WHERE org_id = ${orgId} AND deleted_at IS NULL
+    ORDER BY created_at DESC
+  `;
+  return c.json(rows);
+});
 
-// POST /api/projects
+// POST /api/projects  — create in the caller's org
 projects.post(
   '/',
-  zValidator(
-    'json',
-    z.object({
-      orgId: z.string().uuid(),
-      name: z.string().min(1),
-      description: z.string().optional(),
-    }),
-  ),
+  zValidator('json', z.object({ name: z.string().min(1), description: z.string().optional() })),
   async (c) => {
-    const { orgId, name, description } = c.req.valid('json');
+    const { orgId } = getAuth(c);
+    const { name, description } = c.req.valid('json');
     const [project] = await sql<Project[]>`
       INSERT INTO projects (org_id, name, description)
       VALUES (${orgId}, ${name}, ${description ?? null})
@@ -69,13 +60,16 @@ projects.post(
   },
 );
 
-/** Loads a project with its epics (each hydrated with stories), or null. */
-async function loadProjectWithEpics(id: string): Promise<{ project: Project; epics: Epic[] } | null> {
+/** Loads a project (scoped to org) with its epics (hydrated with stories), or null. */
+async function loadProjectWithEpics(
+  id: string,
+  orgId: string,
+): Promise<{ project: Project; epics: Epic[] } | null> {
   const [project] = await sql<Project[]>`
     SELECT id, org_id, name, description, status, document_count, epic_count,
            created_at, updated_at
     FROM projects
-    WHERE id = ${id} AND deleted_at IS NULL
+    WHERE id = ${id} AND org_id = ${orgId} AND deleted_at IS NULL
   `;
   if (!project) return null;
 
@@ -112,7 +106,7 @@ async function loadProjectWithEpics(id: string): Promise<{ project: Project; epi
 // GET /api/projects/:id  — project with epics (each with stories)
 projects.get('/:id', async (c) => {
   const id = c.req.param('id');
-  const data = await loadProjectWithEpics(id);
+  const data = await loadProjectWithEpics(id, getAuth(c).orgId);
   if (!data) throw new NotFoundError('Project not found', { projectId: id });
   return c.json({ ...data.project, epics: data.epics });
 });
@@ -124,7 +118,7 @@ projects.get(
   async (c) => {
     const id = c.req.param('id');
     const { format } = c.req.valid('query');
-    const data = await loadProjectWithEpics(id);
+    const data = await loadProjectWithEpics(id, getAuth(c).orgId);
     if (!data) throw new NotFoundError('Project not found', { projectId: id });
 
     const { body, contentType, filename } = exportProject(data.project, data.epics, format as ExportFormat);
@@ -141,9 +135,10 @@ projects.get(
   async (c) => {
     const projectId = c.req.param('id');
     const { q } = c.req.valid('query');
+    const { orgId } = getAuth(c);
 
-    const [project] = await sql<{ orgId: string }[]>`
-      SELECT org_id FROM projects WHERE id = ${projectId} AND deleted_at IS NULL
+    const [project] = await sql<{ id: string }[]>`
+      SELECT id FROM projects WHERE id = ${projectId} AND org_id = ${orgId} AND deleted_at IS NULL
     `;
     if (!project) throw new NotFoundError('Project not found', { projectId });
 
@@ -160,7 +155,7 @@ projects.get(
       SELECT source_type, source_id, content, metadata,
              (1 - (embedding <=> ${vectorLiteral}::vector))::float AS similarity
       FROM embeddings
-      WHERE org_id = ${project.orgId}
+      WHERE org_id = ${orgId}
         AND project_id = ${projectId}
         AND (1 - (embedding <=> ${vectorLiteral}::vector)) > ${SIMILARITY_THRESHOLD}
       ORDER BY embedding <=> ${vectorLiteral}::vector
@@ -179,9 +174,10 @@ projects.post(
   async (c) => {
     const projectId = c.req.param('id');
     const { question } = c.req.valid('json');
+    const { orgId } = getAuth(c);
 
-    const [project] = await sql<{ orgId: string }[]>`
-      SELECT org_id FROM projects WHERE id = ${projectId} AND deleted_at IS NULL
+    const [project] = await sql<{ id: string }[]>`
+      SELECT id FROM projects WHERE id = ${projectId} AND org_id = ${orgId} AND deleted_at IS NULL
     `;
     if (!project) throw new NotFoundError('Project not found', { projectId });
 
@@ -200,7 +196,7 @@ projects.post(
       const context = await sql<RagContext[]>`
         SELECT source_type, source_id, content
         FROM embeddings
-        WHERE org_id = ${project.orgId} AND project_id = ${projectId}
+        WHERE org_id = ${orgId} AND project_id = ${projectId}
         ORDER BY embedding <=> ${vectorLiteral}::vector
         LIMIT ${RAG_TOP_K}
       `;

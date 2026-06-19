@@ -6,13 +6,11 @@ import type { ChatMessage } from '@specforge/shared';
 import { CheckCircle2, SendHorizontal } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { API_BASE } from '../lib/api';
-import { useOrg } from '../lib/org';
+import { API_BASE, authHeaders } from '../lib/api';
 import { readSSE } from '../lib/sse';
 import { Card } from '../components/ui';
 
 export function Chat(): JSX.Element {
-  const { orgId } = useOrg();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
@@ -37,8 +35,8 @@ export function Chat(): JSX.Element {
     try {
       const res = await fetch(`${API_BASE}/api/chat/stream`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: nextMessages, orgId }),
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ messages: nextMessages }),
       });
       if (!res.body) throw new Error('No response stream');
 

@@ -48,6 +48,9 @@ const EnvSchema = z.object({
     .default('false')
     .transform((v) => v === 'true'),
 
+  // Auth — JWT signing secret. MUST be overridden in production.
+  JWT_SECRET: z.string().min(16).default('dev-insecure-secret-change-me-please'),
+
   // App
   PORT: z.coerce.number().int().positive().default(3000),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),

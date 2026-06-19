@@ -6,6 +6,18 @@ All notable changes to SpecForge are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **Auth + multi-tenant**: JWT login (`POST /api/auth/login`, `GET /api/auth/me`),
+  scrypt password hashing, `users` table (migration 009), and auth middleware that
+  scopes every `/api/*` request to the caller's org. All list/aggregate endpoints
+  now derive the org from the token (no client-supplied `orgId`), and resource
+  endpoints enforce org ownership. Frontend gains a login screen, auth context,
+  and a logout control; seeded demo user `demo@acme.test` / `demo1234`.
+- **Model routing (flagged)**: classify with Haiku, route simple docs to Haiku for
+  extraction; per-model pricing in cost.ts.
+- **RAG 'Ask your requirements'**: `POST /api/projects/:id/ask` retrieves top-K
+  epics via pgvector and streams a cited Claude answer; Ask panel on the Project page.
+- **Evals + CI**: golden dataset + pure scorer (recall/precision/F1) + `pnpm eval`
+  gating on a baseline F1; CI workflow in `docs/ci.yml`.
 - **Export**: download a project's epics/stories as Markdown, generic CSV, or
   Jira-import CSV (`GET /api/projects/:id/export?format=md|csv|jira`) + export
   buttons on the Project page.

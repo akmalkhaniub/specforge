@@ -15,6 +15,7 @@ import type {
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { sql } from '../db/client.js';
+import { getAuth } from '../middleware/auth.js';
 
 export const analytics = new Hono();
 
@@ -31,12 +32,9 @@ const TIER_PRICING: Record<CostTierName, { input: number; output: number }> = {
   opus: { input: 15, output: 75 },
 };
 
-// GET /api/analytics/overview?orgId=
-analytics.get(
-  '/overview',
-  zValidator('query', z.object({ orgId: z.string().uuid() })),
-  async (c) => {
-    const { orgId } = c.req.valid('query');
+// GET /api/analytics/overview
+analytics.get('/overview', async (c) => {
+    const { orgId } = getAuth(c);
     const [row] = await sql<AnalyticsOverview[]>`
       WITH jobs AS (
         SELECT ej.*
@@ -64,15 +62,13 @@ analytics.get(
   },
 );
 
-// GET /api/analytics/timeline?orgId=&days=30
+// GET /api/analytics/timeline?days=30
 analytics.get(
   '/timeline',
-  zValidator(
-    'query',
-    z.object({ orgId: z.string().uuid(), days: z.coerce.number().int().positive().max(365).default(30) }),
-  ),
+  zValidator('query', z.object({ days: z.coerce.number().int().positive().max(365).default(30) })),
   async (c) => {
-    const { orgId, days } = c.req.valid('query');
+    const { days } = c.req.valid('query');
+    const { orgId } = getAuth(c);
     const rows = await sql<TokenUsageByDay[]>`
       SELECT
         to_char(date_trunc('day', ej.created_at), 'YYYY-MM-DD') AS date,
@@ -91,12 +87,9 @@ analytics.get(
   },
 );
 
-// GET /api/analytics/by_model?orgId=
-analytics.get(
-  '/by_model',
-  zValidator('query', z.object({ orgId: z.string().uuid() })),
-  async (c) => {
-    const { orgId } = c.req.valid('query');
+// GET /api/analytics/by_model
+analytics.get('/by_model', async (c) => {
+    const { orgId } = getAuth(c);
     const rows = await sql<ModelUsage[]>`
       SELECT
         COALESCE(ej.model, 'unknown') AS model,
@@ -155,15 +148,10 @@ analytics.post(
 // GET /api/analytics/jobs?orgId=&limit=20  — recent extraction jobs
 analytics.get(
   '/jobs',
-  zValidator(
-    'query',
-    z.object({
-      orgId: z.string().uuid(),
-      limit: z.coerce.number().int().positive().max(100).default(20),
-    }),
-  ),
+  zValidator('query', z.object({ limit: z.coerce.number().int().positive().max(100).default(20) })),
   async (c) => {
-    const { orgId, limit } = c.req.valid('query');
+    const { limit } = c.req.valid('query');
+    const { orgId } = getAuth(c);
     const rows = await sql<ExtractionAnalyticsRow[]>`
       SELECT id, document_id, status, model,
              prompt_tokens, completion_tokens, cache_read_tokens, cache_write_tokens,
