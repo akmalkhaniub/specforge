@@ -9,8 +9,11 @@ import OpenAI from 'openai';
 import { env } from '../config/env.js';
 import { LLMError } from '../lib/errors.js';
 
-/** Pinned Claude model for extraction and chat. */
+/** Pinned Claude model (Sonnet) for complex extraction and chat. */
 export const CLAUDE_MODEL = 'claude-sonnet-4-5-20250929';
+
+/** Pinned Haiku model — cheap classification and simple-document extraction. */
+export const HAIKU_MODEL = 'claude-haiku-4-5-20251001';
 
 /** Pinned OpenAI embeddings model (1536 dimensions). */
 export const EMBEDDINGS_MODEL = 'text-embedding-3-small';

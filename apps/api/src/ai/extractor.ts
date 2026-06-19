@@ -10,10 +10,12 @@
  * once per epic) read it from cache rather than re-billing full input price.
  */
 import type Anthropic from '@anthropic-ai/sdk';
+import { env } from '../config/env.js';
 import { LLMError, ValidationError } from '../lib/errors.js';
 import { log } from '../lib/logger.js';
+import { classifyDocument } from './classifier.js';
 import { calculateCost } from './cost.js';
-import { CLAUDE_MODEL, getAnthropic } from './models.js';
+import { CLAUDE_MODEL, HAIKU_MODEL, getAnthropic } from './models.js';
 import { EXTRACTION_SYSTEM_PROMPT } from './prompts.js';
 import {
   EXTRACT_EPICS_INPUT_SCHEMA,
@@ -67,11 +69,11 @@ function readUsage(message: Anthropic.Message): Usage {
 }
 
 /** Extracts the first tool_use block's input, or throws if none is present. */
-function getToolInput(message: Anthropic.Message, toolName: string): unknown {
+function getToolInput(message: Anthropic.Message, toolName: string, model: string): unknown {
   const block = message.content.find((b) => b.type === 'tool_use');
   if (!block || block.type !== 'tool_use') {
     throw new LLMError('Claude returned no tool_use block', {
-      model: CLAUDE_MODEL,
+      model,
       tool: toolName,
       stopReason: message.stop_reason,
     });
@@ -91,8 +93,9 @@ async function callTool<T>(args: {
   parse: (input: unknown) => { success: true; data: T } | { success: false; error: string };
   userContent: Anthropic.ContentBlockParam[];
   pass: number;
+  model: string;
 }): Promise<{ data: T; usage: Usage; retried: boolean }> {
-  const { client, toolName, inputSchema, parse, userContent, pass } = args;
+  const { client, toolName, inputSchema, parse, userContent, pass, model } = args;
 
   const system: Anthropic.TextBlockParam[] = [
     {
@@ -107,7 +110,7 @@ async function callTool<T>(args: {
 
   const started = Date.now();
   const first = await client.messages.create({
-    model: CLAUDE_MODEL,
+    model,
     max_tokens: MAX_TOKENS,
     system,
     tools,
@@ -118,7 +121,7 @@ async function callTool<T>(args: {
   log.info('claude_call', {
     pass,
     tool: toolName,
-    model: CLAUDE_MODEL,
+    model,
     promptVersion: EXTRACTION_SYSTEM_PROMPT.version,
     inputTokens: firstUsage.input,
     outputTokens: firstUsage.output,
@@ -127,7 +130,7 @@ async function callTool<T>(args: {
     latencyMs: Date.now() - started,
   });
 
-  const firstParsed = parse(getToolInput(first, toolName));
+  const firstParsed = parse(getToolInput(first, toolName, model));
   if (firstParsed.success) {
     return { data: firstParsed.data, usage: firstUsage, retried: false };
   }
@@ -136,7 +139,7 @@ async function callTool<T>(args: {
   log.warn('claude_validation_retry', { pass, tool: toolName, error: firstParsed.error });
   const retryStarted = Date.now();
   const second = await client.messages.create({
-    model: CLAUDE_MODEL,
+    model,
     max_tokens: MAX_TOKENS,
     system,
     tools,
@@ -153,7 +156,7 @@ async function callTool<T>(args: {
   log.info('claude_call', {
     pass,
     tool: toolName,
-    model: CLAUDE_MODEL,
+    model,
     promptVersion: EXTRACTION_SYSTEM_PROMPT.version,
     inputTokens: secondUsage.input,
     outputTokens: secondUsage.output,
@@ -163,7 +166,7 @@ async function callTool<T>(args: {
     validationRetries: 1,
   });
 
-  const secondParsed = parse(getToolInput(second, toolName));
+  const secondParsed = parse(getToolInput(second, toolName, model));
   if (!secondParsed.success) {
     throw new ValidationError('Claude output failed validation after retry', {
       pass,
@@ -190,6 +193,22 @@ async function callTool<T>(args: {
 export async function extractRequirements(params: ExtractParams): Promise<ExtractionRunResult> {
   const { documentText, documentId, onProgress } = params;
   const client = getAnthropic();
+
+  // Model routing: classify cheaply with Haiku and send simple documents to
+  // Haiku for extraction; complex ones use Sonnet. Off by default (flagged).
+  let extractionModel = CLAUDE_MODEL;
+  let classifyCostUsd = 0;
+  if (env.MODEL_ROUTING_ENABLED) {
+    const classification = await classifyDocument(documentText);
+    classifyCostUsd = classification.costUsd;
+    extractionModel = classification.complexity === 'simple' ? HAIKU_MODEL : CLAUDE_MODEL;
+    log.info('model_routed', {
+      documentId,
+      complexity: classification.complexity,
+      documentType: classification.documentType,
+      extractionModel,
+    });
+  }
 
   // The document is the bulk of every call's input and is identical across all
   // calls, so mark it as a cache breakpoint. Pass 1 writes the cache; pass 2
@@ -224,6 +243,7 @@ export async function extractRequirements(params: ExtractParams): Promise<Extrac
     },
     userContent: [docBlock, { type: 'text', text: 'Extract all epics from the document above.' }],
     pass: 1,
+    model: extractionModel,
   });
   accumulate(pass1.usage);
   if (pass1.retried) validationRetries += 1;
@@ -251,6 +271,7 @@ export async function extractRequirements(params: ExtractParams): Promise<Extrac
         },
       ],
       pass: 2,
+      model: extractionModel,
     });
     accumulate(result.usage);
     if (result.retried) validationRetries += 1;
@@ -262,13 +283,15 @@ export async function extractRequirements(params: ExtractParams): Promise<Extrac
     onProgress('extracting_stories', percent, tokensSoFar());
   }
 
-  const costUsd = calculateCost({
-    inputTokens: totals.input,
-    outputTokens: totals.output,
-    cacheReadTokens: totals.cacheRead,
-    cacheWriteTokens: totals.cacheWrite,
-    model: CLAUDE_MODEL,
-  });
+  const costUsd =
+    classifyCostUsd +
+    calculateCost({
+      inputTokens: totals.input,
+      outputTokens: totals.output,
+      cacheReadTokens: totals.cacheRead,
+      cacheWriteTokens: totals.cacheWrite,
+      model: extractionModel,
+    });
 
   log.info('extraction_complete', {
     documentId,
@@ -290,7 +313,7 @@ export async function extractRequirements(params: ExtractParams): Promise<Extrac
     totalCacheReadTokens: totals.cacheRead,
     totalCacheWriteTokens: totals.cacheWrite,
     costUsd,
-    model: CLAUDE_MODEL,
+    model: extractionModel,
     validationRetries,
   };
 }

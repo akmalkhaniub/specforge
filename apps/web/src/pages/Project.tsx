@@ -3,10 +3,11 @@
  * their user stories.
  */
 import type { Epic, Priority, Story } from '@specforge/shared';
-import { ChevronDown, ChevronRight, Download, FileText, Pencil, RefreshCw, Search } from 'lucide-react';
+import { ChevronDown, ChevronRight, Download, FileText, Pencil, RefreshCw, Search, Sparkles } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { API_BASE, documentDownloadUrl } from '../lib/api';
+import { readSSE } from '../lib/sse';
 import {
   useProject,
   useProjectDocuments,
@@ -125,6 +126,88 @@ function StoryCard({ story, projectId }: { story: Story; projectId: string }): J
         </ul>
       ) : null}
     </div>
+  );
+}
+
+interface AskSource {
+  sourceType: string;
+  sourceId: string;
+  content: string;
+}
+
+function AskPanel({ projectId }: { projectId: string }): JSX.Element {
+  const [question, setQuestion] = useState('');
+  const [answer, setAnswer] = useState('');
+  const [sources, setSources] = useState<AskSource[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const ask = async (): Promise<void> => {
+    const q = question.trim();
+    if (!q || busy) return;
+    setBusy(true);
+    setAnswer('');
+    setSources([]);
+    setError(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/projects/${projectId}/ask`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: q }),
+      });
+      if (!res.body) throw new Error('No response stream');
+      await readSSE(res.body, (event, data) => {
+        const parsed = JSON.parse(data) as Record<string, unknown>;
+        if (event === 'sources' && Array.isArray(parsed.sources)) {
+          setSources(parsed.sources as AskSource[]);
+        } else if (event === 'chunk' && typeof parsed.text === 'string') {
+          setAnswer((a) => a + parsed.text);
+        } else if (event === 'error' && typeof parsed.message === 'string') {
+          setError(parsed.message);
+        }
+      });
+    } catch {
+      setError('Ask failed. Is the API key configured and in credit?');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card>
+      <div className="text-sm font-medium mb-2 flex items-center gap-2">
+        <Sparkles size={15} className="text-accent" /> Ask your requirements
+      </div>
+      <div className="flex gap-2">
+        <input
+          className="flex-1 bg-background border border-border rounded px-3 py-2 text-sm"
+          placeholder="e.g. How are payments handled? What covers password reset?"
+          value={question}
+          onChange={(e) => setQuestion(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') void ask();
+          }}
+        />
+        <button
+          className="px-3 py-2 rounded bg-accent text-accent-fg text-sm disabled:opacity-50"
+          disabled={busy || !question.trim()}
+          onClick={() => void ask()}
+        >
+          {busy ? 'Asking…' : 'Ask'}
+        </button>
+      </div>
+      {error ? <div className="text-danger text-xs mt-2">{error}</div> : null}
+      {answer ? <div className="text-sm mt-3 whitespace-pre-wrap">{answer}</div> : null}
+      {sources.length > 0 ? (
+        <div className="mt-3 flex flex-wrap gap-1">
+          {sources.map((s, i) => (
+            <span key={s.sourceId} className="text-[11px] px-1.5 py-0.5 rounded bg-background border border-border text-muted">
+              [{i + 1}] {s.content.split(':')[0]?.slice(0, 28)}
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </Card>
   );
 }
 
@@ -260,6 +343,8 @@ export function Project(): JSX.Element {
           <div className="text-xs text-muted mt-1">No semantic matches (embeddings may be disabled).</div>
         ) : null}
       </div>
+
+      {id && epics.length > 0 ? <AskPanel projectId={id} /> : null}
 
       {epics.length === 0 ? (
         <Card>

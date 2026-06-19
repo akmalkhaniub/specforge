@@ -6,10 +6,12 @@
 import { zValidator } from '@hono/zod-validator';
 import type { Epic, Project, SearchResult, Story } from '@specforge/shared';
 import { Hono } from 'hono';
+import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
 import { env } from '../config/env.js';
 import { sql } from '../db/client.js';
 import { generateEmbedding } from '../ai/embeddings.js';
+import { streamAnswer, type RagContext } from '../ai/rag.js';
 import { exportProject, type ExportFormat } from '../lib/exporters.js';
 import { NotFoundError } from '../lib/errors.js';
 import { log } from '../lib/logger.js';
@@ -165,5 +167,57 @@ projects.get(
       LIMIT ${SEARCH_LIMIT}
     `;
     return c.json(rows);
+  },
+);
+
+const RAG_TOP_K = 8;
+
+// POST /api/projects/:id/ask  — RAG: retrieve over embeddings, stream a cited answer
+projects.post(
+  '/:id/ask',
+  zValidator('json', z.object({ question: z.string().min(1) })),
+  async (c) => {
+    const projectId = c.req.param('id');
+    const { question } = c.req.valid('json');
+
+    const [project] = await sql<{ orgId: string }[]>`
+      SELECT org_id FROM projects WHERE id = ${projectId} AND deleted_at IS NULL
+    `;
+    if (!project) throw new NotFoundError('Project not found', { projectId });
+
+    return streamSSE(c, async (stream) => {
+      if (!env.EMBEDDINGS_ENABLED) {
+        await stream.writeSSE({
+          data: JSON.stringify({ type: 'error', message: 'Semantic answering requires embeddings to be enabled.' }),
+          event: 'error',
+        });
+        await stream.close();
+        return;
+      }
+
+      const queryEmbedding = await generateEmbedding(question);
+      const vectorLiteral = `[${queryEmbedding.join(',')}]`;
+      const context = await sql<RagContext[]>`
+        SELECT source_type, source_id, content
+        FROM embeddings
+        WHERE org_id = ${project.orgId} AND project_id = ${projectId}
+        ORDER BY embedding <=> ${vectorLiteral}::vector
+        LIMIT ${RAG_TOP_K}
+      `;
+
+      // Send the retrieved sources first so the UI can show citations.
+      await stream.writeSSE({ data: JSON.stringify({ type: 'sources', sources: context }), event: 'sources' });
+
+      await streamAnswer({
+        question,
+        context,
+        onChunk: (text) => {
+          void stream.writeSSE({ data: JSON.stringify({ type: 'chunk', text }), event: 'chunk' });
+        },
+      });
+
+      await stream.writeSSE({ data: JSON.stringify({ type: 'done' }), event: 'done' });
+      await stream.close();
+    });
   },
 );

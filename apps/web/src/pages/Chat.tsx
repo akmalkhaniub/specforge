@@ -8,33 +8,8 @@ import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { API_BASE } from '../lib/api';
 import { useOrg } from '../lib/org';
+import { readSSE } from '../lib/sse';
 import { Card } from '../components/ui';
-
-/** Parses an SSE byte stream, invoking onEvent for each (event, data) frame. */
-async function readSSE(
-  body: ReadableStream<Uint8Array>,
-  onEvent: (event: string, data: string) => void,
-): Promise<void> {
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const frames = buffer.split('\n\n');
-    buffer = frames.pop() ?? '';
-    for (const frame of frames) {
-      let event = 'message';
-      let data = '';
-      for (const line of frame.split('\n')) {
-        if (line.startsWith('event:')) event = line.slice(6).trim();
-        else if (line.startsWith('data:')) data += line.slice(5).trim();
-      }
-      if (data) onEvent(event, data);
-    }
-  }
-}
 
 export function Chat(): JSX.Element {
   const { orgId } = useOrg();

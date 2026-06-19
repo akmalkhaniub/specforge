@@ -41,6 +41,12 @@ const EnvSchema = z.object({
     .enum(['true', 'false'])
     .default('false')
     .transform((v) => v === 'true'),
+  // When true, classify each document with Haiku and route simple ones to Haiku
+  // for extraction (cheaper); complex ones use Sonnet.
+  MODEL_ROUTING_ENABLED: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
 
   // App
   PORT: z.coerce.number().int().positive().default(3000),
