@@ -5,7 +5,10 @@
  * projects if that org has none. Run: `pnpm --filter api db:seed`.
  */
 import { sql } from './client.js';
+import { hashPassword } from '../lib/auth.js';
 import { log } from '../lib/logger.js';
+
+const DEMO_USER = { email: 'demo@acme.test', name: 'Demo User', password: 'demo1234' };
 
 const DEMO_PROJECTS = [
   { name: 'E-commerce Platform', description: 'Online retail storefront and checkout.' },
@@ -21,6 +24,14 @@ async function seed(): Promise<void> {
   `;
   if (!org) throw new Error('Failed to upsert seed organisation');
   log.info('seed_org_ready', { orgId: org.id, slug: 'acme' });
+
+  // Demo user for login (idempotent by email).
+  await sql`
+    INSERT INTO users (org_id, email, name, password_hash)
+    VALUES (${org.id}, ${DEMO_USER.email}, ${DEMO_USER.name}, ${hashPassword(DEMO_USER.password)})
+    ON CONFLICT (email) DO NOTHING
+  `;
+  log.info('seed_user_ready', { email: DEMO_USER.email });
 
   const [countRow] = await sql<{ count: number }[]>`
     SELECT COUNT(*)::int AS count FROM projects WHERE org_id = ${org.id}

@@ -10,7 +10,6 @@ import type {
   ExtractionAnalyticsRow,
   ExtractionJob,
   ModelUsage,
-  Organisation,
   Priority,
   Project,
   SearchResult,
@@ -23,8 +22,66 @@ const baseURL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
 
 export const http = axios.create({ baseURL });
 
-/** Base URL for raw fetch streaming (chat SSE). */
+/** Base URL for raw fetch streaming (chat SSE, RAG ask). */
 export const API_BASE = baseURL;
+
+const TOKEN_KEY = 'specforge-token';
+
+/** Returns the stored bearer token, if any. */
+export function getToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+/** Sets (or clears) the bearer token for axios + fetch and persists it. */
+export function setAuthToken(token: string | null): void {
+  if (token) {
+    localStorage.setItem(TOKEN_KEY, token);
+    http.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+  } else {
+    localStorage.removeItem(TOKEN_KEY);
+    delete http.defaults.headers.common['Authorization'];
+  }
+}
+
+/** Authorization header for raw fetch() calls (SSE endpoints). */
+export function authHeaders(): Record<string, string> {
+  const token = getToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+// Restore token on module load so refreshes stay logged in.
+const existingToken = getToken();
+if (existingToken) http.defaults.headers.common['Authorization'] = `Bearer ${existingToken}`;
+
+let onUnauthorized: (() => void) | null = null;
+/** Registers a callback fired when the API returns 401 (token invalid/expired). */
+export function setUnauthorizedHandler(fn: () => void): void {
+  onUnauthorized = fn;
+}
+http.interceptors.response.use(
+  (r) => r,
+  (error: unknown) => {
+    if (axios.isAxiosError(error) && error.response?.status === 401) onUnauthorized?.();
+    return Promise.reject(error);
+  },
+);
+
+export interface AuthUser {
+  id: string;
+  orgId: string;
+  email: string;
+  name: string;
+}
+
+export async function login(email: string, password: string): Promise<{ token: string; user: AuthUser }> {
+  const { data } = await http.post<{ token: string; user: AuthUser }>('/api/auth/login', { email, password });
+  return data;
+}
+
+export async function getMe(): Promise<AuthUser> {
+  const { data } = await http.get<AuthUser>('/api/auth/me');
+  return data;
+}
 
 /** A project with its epics (and each epic's stories) hydrated. */
 export type ProjectDetail = Project & { epics: Epic[] };
@@ -36,21 +93,12 @@ export interface UploadResponse {
   message: string;
 }
 
-export async function getDefaultOrg(): Promise<Organisation> {
-  const { data } = await http.get<Organisation>('/api/org/default');
+export async function getProjects(): Promise<Project[]> {
+  const { data } = await http.get<Project[]>('/api/projects');
   return data;
 }
 
-export async function getProjects(orgId: string): Promise<Project[]> {
-  const { data } = await http.get<Project[]>('/api/projects', { params: { orgId } });
-  return data;
-}
-
-export async function createProject(input: {
-  orgId: string;
-  name: string;
-  description?: string;
-}): Promise<Project> {
+export async function createProject(input: { name: string; description?: string }): Promise<Project> {
   const { data } = await http.post<Project>('/api/projects', input);
   return data;
 }
@@ -108,9 +156,21 @@ export async function reprocessDocument(id: string): Promise<{ jobId: string }> 
   return data;
 }
 
+/** Appends the bearer token as a query param for browser GETs (SSE, downloads). */
+export function withTokenParam(url: string): string {
+  const token = getToken();
+  if (!token) return url;
+  return url + (url.includes('?') ? '&' : '?') + `access_token=${encodeURIComponent(token)}`;
+}
+
 /** Direct download URL for a document (server redirects to a presigned URL). */
 export function documentDownloadUrl(id: string): string {
-  return `${API_BASE}/api/documents/${id}/download`;
+  return withTokenParam(`${API_BASE}/api/documents/${id}/download`);
+}
+
+/** Export download URL for a project in the given format. */
+export function projectExportUrl(id: string, format: string): string {
+  return withTokenParam(`${API_BASE}/api/projects/${id}/export?format=${format}`);
 }
 
 export async function getJob(jobId: string): Promise<ExtractionJob> {
@@ -118,27 +178,23 @@ export async function getJob(jobId: string): Promise<ExtractionJob> {
   return data;
 }
 
-export async function getAnalyticsOverview(orgId: string): Promise<AnalyticsOverview> {
-  const { data } = await http.get<AnalyticsOverview>('/api/analytics/overview', { params: { orgId } });
+export async function getAnalyticsOverview(): Promise<AnalyticsOverview> {
+  const { data } = await http.get<AnalyticsOverview>('/api/analytics/overview');
   return data;
 }
 
-export async function getAnalyticsTimeline(orgId: string, days = 30): Promise<TokenUsageByDay[]> {
-  const { data } = await http.get<TokenUsageByDay[]>('/api/analytics/timeline', {
-    params: { orgId, days },
-  });
+export async function getAnalyticsTimeline(days = 30): Promise<TokenUsageByDay[]> {
+  const { data } = await http.get<TokenUsageByDay[]>('/api/analytics/timeline', { params: { days } });
   return data;
 }
 
-export async function getAnalyticsByModel(orgId: string): Promise<ModelUsage[]> {
-  const { data } = await http.get<ModelUsage[]>('/api/analytics/by_model', { params: { orgId } });
+export async function getAnalyticsByModel(): Promise<ModelUsage[]> {
+  const { data } = await http.get<ModelUsage[]>('/api/analytics/by_model');
   return data;
 }
 
-export async function getAnalyticsJobs(orgId: string, limit = 20): Promise<ExtractionAnalyticsRow[]> {
-  const { data } = await http.get<ExtractionAnalyticsRow[]>('/api/analytics/jobs', {
-    params: { orgId, limit },
-  });
+export async function getAnalyticsJobs(limit = 20): Promise<ExtractionAnalyticsRow[]> {
+  const { data } = await http.get<ExtractionAnalyticsRow[]>('/api/analytics/jobs', { params: { limit } });
   return data;
 }
 

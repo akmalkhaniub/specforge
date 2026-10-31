@@ -13,6 +13,7 @@ import { streamChat } from '../ai/chat.js';
 import { sql } from '../db/client.js';
 import { addExtractionJob } from '../queue/extraction-queue.js';
 import { storage } from '../storage/minio.js';
+import { getAuth } from '../middleware/auth.js';
 import { log } from '../lib/logger.js';
 
 export const chat = new Hono();
@@ -20,16 +21,7 @@ export const chat = new Hono();
 const ChatBody = z.object({
   messages: z.array(z.object({ role: z.enum(['user', 'assistant']), content: z.string() })).min(1),
   projectId: z.string().uuid().optional(),
-  orgId: z.string().uuid().optional(),
 });
-
-/** Resolves the org id to attach a chat-created project to. */
-async function resolveOrgId(orgId: string | undefined): Promise<string> {
-  if (orgId) return orgId;
-  const [org] = await sql<{ id: string }[]>`SELECT id FROM organisations WHERE slug = 'acme'`;
-  if (!org) throw new Error('No default organisation found; provide orgId');
-  return org.id;
-}
 
 /** Renders a PRD summary to plain text for storage + downstream extraction. */
 function prdToText(prd: PRDSummary): string {
@@ -50,7 +42,8 @@ function prdToText(prd: PRDSummary): string {
 
 // POST /api/chat/stream
 chat.post('/stream', zValidator('json', ChatBody), (c) => {
-  const { messages, projectId, orgId } = c.req.valid('json');
+  const { messages, projectId } = c.req.valid('json');
+  const { orgId } = getAuth(c);
 
   return streamSSE(c, async (stream) => {
     let prd: PRDSummary | undefined;
@@ -72,12 +65,11 @@ chat.post('/stream', zValidator('json', ChatBody), (c) => {
     }
 
     // Requirements gathered — materialise a project + document + extraction job.
-    const resolvedOrg = await resolveOrgId(orgId);
     let targetProjectId = projectId;
     if (!targetProjectId) {
       const [project] = await sql<{ id: string }[]>`
         INSERT INTO projects (org_id, name, description)
-        VALUES (${resolvedOrg}, ${prd.title}, ${prd.overview})
+        VALUES (${orgId}, ${prd.title}, ${prd.overview})
         RETURNING id
       `;
       targetProjectId = project?.id;
@@ -103,7 +95,7 @@ chat.post('/stream', zValidator('json', ChatBody), (c) => {
     const jobId = await addExtractionJob({
       documentId: doc.id,
       projectId: targetProjectId,
-      orgId: resolvedOrg,
+      orgId,
       filename: `${prd.title}.txt`,
     });
     await sql`

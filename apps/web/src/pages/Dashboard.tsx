@@ -4,10 +4,9 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAnalyticsOverview, useCreateProject, useProjects } from '../lib/hooks';
-import { useOrg } from '../lib/org';
 import { Card, Skeleton, StatCard } from '../components/ui';
 
-function NewProjectModal({ orgId, onClose }: { orgId: string; onClose: () => void }): JSX.Element {
+function NewProjectModal({ onClose }: { onClose: () => void }): JSX.Element {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const create = useCreateProject();
@@ -39,7 +38,7 @@ function NewProjectModal({ orgId, onClose }: { orgId: string; onClose: () => voi
             disabled={!name.trim() || create.isPending}
             onClick={() =>
               create.mutate(
-                { orgId, name: name.trim(), description: description.trim() || undefined },
+                { name: name.trim(), description: description.trim() || undefined },
                 { onSuccess: onClose },
               )
             }
@@ -53,9 +52,8 @@ function NewProjectModal({ orgId, onClose }: { orgId: string; onClose: () => voi
 }
 
 export function Dashboard(): JSX.Element {
-  const { orgId } = useOrg();
-  const projects = useProjects(orgId);
-  const overview = useAnalyticsOverview(orgId);
+  const projects = useProjects();
+  const overview = useAnalyticsOverview();
   const [showModal, setShowModal] = useState(false);
 
   return (
@@ -76,8 +74,7 @@ export function Dashboard(): JSX.Element {
       <div className="flex items-center justify-between">
         <h2 className="font-semibold">Projects</h2>
         <button
-          className="px-3 py-1.5 text-sm rounded bg-accent text-white disabled:opacity-50"
-          disabled={!orgId}
+          className="px-3 py-1.5 text-sm rounded bg-accent text-accent-fg"
           onClick={() => setShowModal(true)}
         >
           New Project
@@ -109,7 +106,7 @@ export function Dashboard(): JSX.Element {
         </div>
       )}
 
-      {showModal && orgId ? <NewProjectModal orgId={orgId} onClose={() => setShowModal(false)} /> : null}
+      {showModal ? <NewProjectModal onClose={() => setShowModal(false)} /> : null}
     </div>
   );
 }

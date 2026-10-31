@@ -7,6 +7,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { sql } from '../db/client.js';
 import { NotFoundError } from '../lib/errors.js';
+import { getAuth } from '../middleware/auth.js';
 import { log } from '../lib/logger.js';
 
 export const epics = new Hono();
@@ -14,11 +15,13 @@ export const epics = new Hono();
 // GET /api/epics/:id  — epic with its stories
 epics.get('/:id', async (c) => {
   const id = c.req.param('id');
+  const { orgId } = getAuth(c);
   const [epic] = await sql<Epic[]>`
     SELECT id, project_id, document_id, title, description, priority,
            confidence::float AS confidence, metadata, created_at
     FROM epics
     WHERE id = ${id} AND deleted_at IS NULL
+      AND project_id IN (SELECT id FROM projects WHERE org_id = ${orgId})
   `;
   if (!epic) throw new NotFoundError('Epic not found', { epicId: id });
 
@@ -48,6 +51,7 @@ epics.patch(
   async (c) => {
     const id = c.req.param('id');
     const patch = c.req.valid('json');
+    const { orgId } = getAuth(c);
 
     const [epic] = await sql<Epic[]>`
       UPDATE epics SET
@@ -55,6 +59,7 @@ epics.patch(
         description = ${patch.description ?? sql`description`},
         priority = ${patch.priority ?? sql`priority`}
       WHERE id = ${id} AND deleted_at IS NULL
+        AND project_id IN (SELECT id FROM projects WHERE org_id = ${orgId})
       RETURNING id, project_id, document_id, title, description, priority,
                 confidence::float AS confidence, metadata, created_at
     `;
@@ -67,9 +72,11 @@ epics.patch(
 // DELETE /api/epics/:id  — soft delete
 epics.delete('/:id', async (c) => {
   const id = c.req.param('id');
+  const { orgId } = getAuth(c);
   const [epic] = await sql<{ id: string }[]>`
     UPDATE epics SET deleted_at = now()
     WHERE id = ${id} AND deleted_at IS NULL
+      AND project_id IN (SELECT id FROM projects WHERE org_id = ${orgId})
     RETURNING id
   `;
   if (!epic) throw new NotFoundError('Epic not found', { epicId: id });

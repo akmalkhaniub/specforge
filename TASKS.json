@@ -1,0 +1,38 @@
+[
+  {
+    "id": "SPF-001",
+    "status": "TODO",
+    "priority": 1,
+    "title": "Add TASKS.json Export Endpoint to SpecForge API",
+    "description": "Implement a new route `POST /api/epics/:id/export-tasks` in `apps/api` that converts extracted user stories and acceptance criteria directly into a valid `TASKS.json` backlog format for autonomous agents to consume.",
+    "acceptance_criteria": [
+      "Route maps user stories to TASK objects with id, title, description, and acceptance_criteria",
+      "Validates export output against TASKS.json schema",
+      "pnpm typecheck exits with 0"
+    ]
+  },
+  {
+    "id": "SPF-002",
+    "status": "TODO",
+    "priority": 2,
+    "title": "Add Vitest Unit Test Suite for Requirements Extractor with Mock Fixtures",
+    "description": "Add Vitest test suite in `apps/api/test/extractor.test.ts` mocking Claude tool responses with JSON fixture files to verify parsing of malformed inputs, multi-page specs, and edge-case stories offline.",
+    "acceptance_criteria": [
+      "Tests run offline in <3 seconds without live Anthropic API keys",
+      "Covers epic extraction, user story parsing, and Zod validation",
+      "pnpm test exits with 0"
+    ]
+  },
+  {
+    "id": "SPF-003",
+    "status": "TODO",
+    "priority": 3,
+    "title": "Remove minio.exe Binary from Git Tracking",
+    "description": "Untrack `.tools/minio.exe` (107.9MB) from git history and add `.tools/*.exe` to `.gitignore` to prevent large binary bloat.",
+    "acceptance_criteria": [
+      "minio.exe is removed from git tracking",
+      ".gitignore includes .tools/",
+      "Docker compose MinIO service remains unaffected"
+    ]
+  }
+]

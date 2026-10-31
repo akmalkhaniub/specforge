@@ -6,7 +6,6 @@ import { FileText, UploadCloud } from 'lucide-react';
 import { useState } from 'react';
 import { uploadDocument } from '../lib/api';
 import { useProjects } from '../lib/hooks';
-import { useOrg } from '../lib/org';
 import { Card } from '../components/ui';
 import { ExtractionProgress } from '../components/ExtractionProgress';
 
@@ -17,8 +16,7 @@ function formatSize(bytes: number): string {
 }
 
 export function Upload(): JSX.Element {
-  const { orgId } = useOrg();
-  const projects = useProjects(orgId);
+  const projects = useProjects();
   const [projectId, setProjectId] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [dragging, setDragging] = useState(false);

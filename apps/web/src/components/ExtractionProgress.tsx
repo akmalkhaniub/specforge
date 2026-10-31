@@ -7,7 +7,7 @@ import type { ExtractionProgress as ProgressEvent, ProgressStage } from '@specfo
 import { CheckCircle2, XCircle } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { API_BASE, getJob } from '../lib/api';
+import { API_BASE, getJob, withTokenParam } from '../lib/api';
 import { Card, Spinner } from './ui';
 
 const STAGE_LABELS: Record<ProgressStage, string> = {
@@ -39,7 +39,7 @@ export function ExtractionProgress({ jobId, projectId, onRetry }: Props): JSX.El
   const pollRef = useRef<number | null>(null);
 
   useEffect(() => {
-    const source = new EventSource(`${API_BASE}/api/jobs/${jobId}/progress`);
+    const source = new EventSource(withTokenParam(`${API_BASE}/api/jobs/${jobId}/progress`));
 
     const onProgress = (e: MessageEvent<string>): void => {
       try {

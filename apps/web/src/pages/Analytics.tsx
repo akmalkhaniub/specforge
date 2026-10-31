@@ -24,7 +24,6 @@ import {
   useAnalyticsTimeline,
   useCostEstimate,
 } from '../lib/hooks';
-import { useOrg } from '../lib/org';
 import { Card, Skeleton, StatCard } from '../components/ui';
 
 const CHART_AXIS = { stroke: '#718096', fontSize: 12 };
@@ -168,11 +167,10 @@ function JobsTable({ rows }: { rows: ExtractionAnalyticsRow[] }): JSX.Element {
 }
 
 export function Analytics(): JSX.Element {
-  const { orgId } = useOrg();
-  const overview = useAnalyticsOverview(orgId);
-  const timeline = useAnalyticsTimeline(orgId, 30);
-  const byModel = useAnalyticsByModel(orgId);
-  const jobs = useAnalyticsJobs(orgId, 20);
+  const overview = useAnalyticsOverview();
+  const timeline = useAnalyticsTimeline(30);
+  const byModel = useAnalyticsByModel();
+  const jobs = useAnalyticsJobs(20);
 
   const avgCost = overview.data?.avgCostPerDocument ?? 0;
   const cacheRate = overview.data?.cacheHitRate ?? 0;
