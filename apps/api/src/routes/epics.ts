@@ -7,6 +7,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { sql } from '../db/client.js';
 import { NotFoundError } from '../lib/errors.js';
+import { epicToTasks } from '../lib/exporters.js';
 import { getAuth } from '../middleware/auth.js';
 import { log } from '../lib/logger.js';
 
@@ -82,4 +83,56 @@ epics.delete('/:id', async (c) => {
   if (!epic) throw new NotFoundError('Epic not found', { epicId: id });
   log.info('epic_deleted', { epicId: id });
   return c.json({ id: epic.id, deleted: true });
+});
+
+const ExportTasksBodySchema = z
+  .object({
+    prefix: z.string().min(1).max(20).optional(),
+  })
+  .optional();
+
+// POST /api/epics/:id/export-tasks  — export stories as TASKS.json backlog
+epics.post('/:id/export-tasks', async (c) => {
+  const id = c.req.param('id');
+  const { orgId } = getAuth(c);
+
+  let parsedPrefix: string | undefined;
+  const rawText = await c.req.text();
+  if (rawText.trim().length > 0) {
+    let parsedJson: unknown;
+    try {
+      parsedJson = JSON.parse(rawText);
+    } catch {
+      return c.json({ error: 'Invalid JSON request body', code: 'VALIDATION_ERROR' }, 400);
+    }
+    const bodyResult = ExportTasksBodySchema.safeParse(parsedJson);
+    if (!bodyResult.success) {
+      return c.json(
+        { error: 'Invalid export options', code: 'VALIDATION_ERROR', details: bodyResult.error.flatten() },
+        400,
+      );
+    }
+    parsedPrefix = bodyResult.data?.prefix;
+  }
+
+  const [epic] = await sql<Epic[]>`
+    SELECT id, project_id, document_id, title, description, priority,
+           confidence::float AS confidence, metadata, created_at
+    FROM epics
+    WHERE id = ${id} AND deleted_at IS NULL
+      AND project_id IN (SELECT id FROM projects WHERE org_id = ${orgId})
+  `;
+  if (!epic) throw new NotFoundError('Epic not found', { epicId: id });
+
+  const stories = await sql<Story[]>`
+    SELECT id, epic_id, title, description, persona, acceptance_criteria,
+           priority, story_points, confidence::float AS confidence, created_at
+    FROM stories
+    WHERE epic_id = ${id} AND deleted_at IS NULL
+    ORDER BY created_at ASC
+  `;
+
+  const tasks = epicToTasks(epic, stories, parsedPrefix);
+  log.info('epic_tasks_exported', { epicId: id, taskCount: tasks.length });
+  return c.json(tasks);
 });

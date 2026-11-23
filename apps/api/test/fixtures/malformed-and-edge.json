@@ -1,0 +1,54 @@
+{
+  "malformedPass1": {
+    "epics": [
+      {
+        "title": "",
+        "description": "Missing valid title and confidence out of bounds",
+        "priority": "urgent",
+        "confidence": 1.8,
+        "rationale": ""
+      }
+    ],
+    "document_type": "PRD",
+    "extraction_notes": "Invalid schema sample"
+  },
+  "repairedPass1": {
+    "epics": [
+      {
+        "title": "Resilient Webhook Delivery",
+        "description": "Deliver signed event webhooks with exponential backoff.",
+        "priority": "high",
+        "confidence": 0.88,
+        "rationale": "Recovered after schema validation retry."
+      }
+    ],
+    "document_type": "PRD",
+    "extraction_notes": "Repaired after retry."
+  },
+  "malformedStories": {
+    "stories": [
+      {
+        "title": "Invalid story points",
+        "description": "As a developer, I want retries, so that delivery is reliable.",
+        "persona": "Developer",
+        "acceptance_criteria": ["Given a 500 error, When retrying, Then backoff increases."],
+        "priority": "high",
+        "story_points": 7,
+        "confidence": 0.85
+      }
+    ]
+  },
+  "edgeCaseStories": {
+    "stories": [
+      {
+        "title": "Minimal edge-case story with empty acceptance criteria",
+        "description": "As an operator, I want a fallback check, so that empty arrays do not crash downstream.",
+        "persona": "Operator",
+        "acceptance_criteria": [],
+        "priority": "low",
+        "story_points": 1,
+        "confidence": 0.72
+      }
+    ]
+  }
+}

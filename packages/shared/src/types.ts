@@ -238,3 +238,13 @@ export interface ApiError {
   code: string;
   details?: unknown;
 }
+
+/** Task item exported in TASKS.json format for autonomous coding agents. */
+export interface AgentTaskItem {
+  id: string;
+  status: 'TODO' | 'IN_PROGRESS' | 'DONE';
+  priority: 1 | 2 | 3;
+  title: string;
+  description: string;
+  acceptance_criteria: string[];
+}

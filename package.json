@@ -10,8 +10,9 @@
     "build": "pnpm --filter @specforge/shared build && pnpm --filter api build && pnpm --filter web build",
     "dev:api": "pnpm --filter api dev",
     "dev:web": "pnpm --filter web dev",
+    "test": "pnpm --filter api test",
     "typecheck": "pnpm -r typecheck",
-    "verify": "pnpm -r typecheck"
+    "verify": "pnpm -r typecheck && pnpm test"
   },
   "packageManager": "pnpm@9.15.0"
 }

@@ -1,0 +1,56 @@
+{
+  "documentText": "Page 1: Enterprise Checkout Platform PRD. Supports single-click tokenized payments and multi-currency tax calculation.\n\nPage 2: Audit & Compliance Ledger. Every payment state transition must emit an immutable audit record with trace_id and actor_id.",
+  "pass1": {
+    "epics": [
+      {
+        "title": "Tokenized Payment Checkout",
+        "description": "Enable low-latency tokenized card and wallet payments across currencies.",
+        "priority": "high",
+        "confidence": 0.94,
+        "rationale": "Core revenue path explicitly detailed in Page 1."
+      },
+      {
+        "title": "Immutable Compliance Ledger",
+        "description": "Record every payment mutation with actor and trace correlation.",
+        "priority": "medium",
+        "confidence": 0.89,
+        "rationale": "Explicit regulatory requirement on Page 2."
+      }
+    ],
+    "document_type": "PRD",
+    "extraction_notes": "Multi-page requirements document with clear payment and compliance boundaries."
+  },
+  "pass2ByEpicTitle": {
+    "Tokenized Payment Checkout": {
+      "stories": [
+        {
+          "title": "Process single-click tokenized card charge",
+          "description": "As a returning buyer, I want to pay using my stored payment token, so that checkout completes in under 2 seconds.",
+          "persona": "Returning Buyer",
+          "acceptance_criteria": [
+            "Given a valid stored payment token, When checkout is submitted, Then the charge is authorized within 2000ms.",
+            "Given an expired token, When checkout is submitted, Then an actionable re-auth error is returned."
+          ],
+          "priority": "high",
+          "story_points": 5,
+          "confidence": 0.92
+        }
+      ]
+    },
+    "Immutable Compliance Ledger": {
+      "stories": [
+        {
+          "title": "Emit immutable ledger entry on payment transition",
+          "description": "As a compliance auditor, I want every payment state change logged immutably, so that audits trace actor and request context.",
+          "persona": "Compliance Auditor",
+          "acceptance_criteria": [
+            "Given a payment state transition, When persistence commits, Then an append-only ledger entry is written with trace_id."
+          ],
+          "priority": "medium",
+          "story_points": 3,
+          "confidence": 0.9
+        }
+      ]
+    }
+  }
+}
